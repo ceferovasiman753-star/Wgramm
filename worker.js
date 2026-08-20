@@ -1,113 +1,45 @@
-// ============================================================
-// Truth or Dare Telegram Bot — Cloudflare Workers (single file)
-// Сгенерировано для деплоя через dash.cloudflare.com
-// ============================================================
+export default {
+  async fetch(request, env, ctx) {
+    // 1. Простейшая проверка через браузер (чтобы убедиться, что воркер жив)
+    if (request.method === "GET") {
+      return new Response("Worker is active and running!", { status: 200 });
+    }
 
-// content.js — тексты интерфейса + генератор 250+ вопросов и действий на 3 языках
+    // 2. Обработка входящих запросов от Telegram (POST)
+    if (request.method === "POST") {
+      try {
+        const update = await request.json();
+        console.log("Incoming Telegram Update:", JSON.stringify(update));
 
-// ---------- Наполнители (используются в шаблонах) ----------
-const FILLERS = {
-  ru: [
-    'игроку слева от тебя', 'самому младшему в игре', 'самому старшему в игре',
-    'тому, кто последний писал в чат', 'организатору игры', 'первому, кто согласился играть',
-    'самому молчаливому игроку', 'тому, кого ты знаешь дольше всех', 'последнему, кто выбрал действие',
-    'тому, кто сегодня меньше всех писал в чат', 'случайному игроку по твоему выбору', 'своему соседу по переписке'
-  ],
-  en: [
-    'the player to your left', 'the youngest player here', 'the oldest player here',
-    'whoever spoke last in the chat', 'the person who started this game', 'the first person who agreed to play',
-    'the quietest player', 'the player you have known the longest', 'whoever picked Dare last',
-    "whoever's said the least today", 'a random player of your choice', 'your neighbor in the chat'
-  ],
-  az: [
-    'sənin solundakı oyunçuya', 'otaqdakı ən gənc oyunçuya', 'otaqdakı ən yaşlı oyunçuya',
-    'söhbətdə sonuncu yazana', 'oyunu başladan şəxsə', 'oynamağa ilk razı olana',
-    'ən sakit oyunçuya', 'ən uzun tanıdığın oyunçuya', 'son dəfə "Hərəkət" seçənə',
-    'bu gün az yazana', 'seçdiyin təsadüfi oyunçuya', 'söhbətdəki qonşuna'
-  ]
+        if (update.message && update.message.text) {
+          const chatId = update.message.chat.id;
+          const text = update.message.text;
+
+          // Простейший ответ на /start или любое сообщение
+          const replyText = text === "/start" 
+            ? "Привет! Бот успешно работает на Cloudflare Workers!" 
+            : `Вы написали: ${text}`;
+
+          await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: replyText,
+            }),
+          });
+        }
+
+        return new Response("OK", { status: 200 });
+      } catch (err) {
+        console.error("Error processing update:", err.stack || err.message);
+        return new Response("Internal Error", { status: 500 });
+      }
+    }
+
+    return new Response("Method Not Allowed", { status: 405 });
+  },
 };
-
-// ---------- Шаблоны "Правда" ----------
-const TRUTH_TEMPLATES = {
-  ru: [
-    'Как ты относишься к {F}?', 'Что бы ты хотел сказать {F}, если бы не боялся?',
-    'Какой совет ты бы дал {F}?', 'Доверяешь ли ты {F}? Почему?',
-    'Какой искренний комплимент ты бы сделал {F}?', 'Что тебя раздражает в {F}?',
-    'Какую тайну ты мог бы доверить {F}?', 'Что смешного ты можешь рассказать {F}?',
-    'Какое первое впечатление у тебя было о {F}?', 'Задай неудобный вопрос {F} прямо сейчас.',
-    'Что ты никогда не говорил {F}, но хотел бы?', 'Какую помощь ты бы оказал {F}, если бы мог?',
-    'Что общего у тебя с {F}?', 'Какую черту характера ты бы хотел позаимствовать у {F}?',
-    'Признайся, завидовал ли ты когда-нибудь {F}?', 'Какой подарок ты бы выбрал для {F}?',
-    'Что бы ты пожелал {F} на день рождения?', 'Какую шутку про себя ты готов рассказать {F}?',
-    'Расскажи {F} о своём самом неловком моменте.', 'Что бы ты изменил в своей дружбе с {F}?'
-  ],
-  en: [
-    'How do you really feel about {F}?', "What would you tell {F} if you weren't afraid?",
-    'What advice would you give {F}?', 'Do you trust {F}? Why or why not?',
-    'What honest compliment would you give {F}?', 'What annoys you about {F}?',
-    'What secret could you trust {F} with?', "What's the funniest thing you could tell {F}?",
-    'What was your first impression of {F}?', 'Ask {F} an awkward question right now.',
-    "What have you never told {F} but wanted to?", 'How would you help {F} if you could?',
-    'What do you have in common with {F}?', 'What trait would you like to borrow from {F}?',
-    'Have you ever been jealous of {F}?', 'What gift would you pick for {F}?',
-    'What would you wish {F} for their birthday?', 'What joke about yourself are you willing to tell {F}?',
-    'Tell {F} about your most awkward moment.', 'What would you change about your friendship with {F}?'
-  ],
-  az: [
-    '{F} haqqında həqiqətən nə düşünürsən?', 'Qorxmasaydın, {F} nə deyərdin?',
-    '{F} hansı məsləhəti verərdin?', '{F} güvənirsənmi? Niyə?',
-    '{F} hansı səmimi kompliment edərdin?', '{F} səni nə əsəbləşdirir?',
-    'Hansı sirri {F} etibar edə bilərsən?', '{F} deyə biləcəyin ən gülməli şey nədir?',
-    '{F} haqqında ilk təəssüratın nə idi?', 'İndi {F} narahat bir sual ver.',
-    '{F} heç vaxt demədiyin amma demək istədiyin nə var?', 'Bacarsan {F} necə kömək edərdin?',
-    'Səninlə {F} arasında ortaq nə var?', '{F} hansı xüsusiyyəti götürmək istərdin?',
-    'Heç {F} qısqanmısan?', '{F} üçün hansı hədiyyəni seçərdin?',
-    '{F} ad gününə nə arzu edərdin?', '{F} özün haqqında hansı zarafatı danışa bilərsən?',
-    '{F} ən utancverici anını danış.', '{F} ilə dostluğunda nəyi dəyişərdin?', '{F} sənə görə ən çox nəyi ilə seçilir?'
-  ]
-};
-
-// ---------- Шаблоны "Действие" ----------
-const DARE_TEMPLATES = {
-  ru: [
-    'Сделай искренний комплимент {F}.', 'Напиши смешное сообщение {F} прямо сейчас.',
-    'Отправь голосовое сообщение с небольшим признанием {F}.', 'Придумай смешное прозвище для {F}.',
-    'Спой одну строчку любимой песни, посвятив её {F}.', 'Расскажи анекдот специально для {F}.',
-    'Опиши {F} тремя словами вслух.', 'Изобрази походку {F}.',
-    'Напиши короткое стихотворение, посвящённое {F}.', 'Пришли смешной эмодзи-портрет {F}.',
-    'Признайся {F} в чём-то незначительном, но правдивом.', 'Пожелай удачи {F} необычным способом.',
-    'Сделай голосовое приветствие специально для {F}.', 'Придумай тост в честь {F}.',
-    'Напиши хайку, посвящённое {F}.', 'Изобрази бурную радость, обращаясь к {F}.',
-    'Расскажи, что бы ты подарил {F} на Новый год.', 'Сделай доброе дело для {F} в течение следующих 10 минут.',
-    'Напиши {F} комплимент КАПСОМ.', 'Пришли {F} мем, который напоминает тебе о нём/ней.'
-  ],
-  en: [
-    'Give {F} a genuine compliment right now.', 'Send {F} a funny message this instant.',
-    'Send a voice message confessing something small to {F}.', 'Invent a funny nickname for {F}.',
-    'Sing one line of a song dedicated to {F}.', 'Tell a joke specifically for {F}.',
-    'Describe {F} out loud in three words.', 'Imitate the way {F} walks.',
-    'Write a short poem dedicated to {F}.', 'Send an emoji-portrait of {F}.',
-    'Confess something small but true to {F}.', 'Wish {F} good luck in a weird way.',
-    'Record a voice greeting just for {F}.', 'Make up a toast in honor of {F}.',
-    'Write a haiku dedicated to {F}.', 'Act out pure joy while addressing {F}.',
-    "Say what you'd get {F} as a New Year's gift.", 'Do something kind for {F} in the next 10 minutes.',
-    'Send {F} a compliment IN ALL CAPS.', 'Send {F} a meme that reminds you of them.'
-  ],
-  az: [
-    '{F} indi səmimi kompliment et.', '{F} dərhal gülməli mesaj yaz.',
-    '{F} kiçik bir etirafını səsli mesajla göndər.', '{F} üçün gülməli ləqəb uydur.',
-    'Bir mahnının bir sətrini {F} həsr edərək oxu.', '{F} üçün xüsusi zarafat danış.',
-    '{F} üç sözlə səsli təsvir et.', '{F} yeriyişini təqlid et.',
-    '{F} həsr olunmuş qısa şeir yaz.', '{F} emoji-portretini göndər.',
-    '{F} kiçik amma doğru bir etiraf et.', '{F} qəribə şəkildə uğur arzula.',
-    'Yalnız {F} üçün səsli salamlama yaz.', '{F} şərəfinə tost uydur.',
-    '{F} həsr olunmuş haiku yaz.', '{F} müraciət edərək sevinci canlandır.',
-    '{F} Yeni il hədiyyəsi kimi nə alacağını de.', 'Növbəti 10 dəqiqədə {F} üçün yaxşı bir iş gör.',
-    '{F} BÖYÜK HƏRFLƏRLƏ kompliment yaz.', '{F} onu xatırladan bir mem göndər.'
-  ]
-};
-
-// ---------- Авторские (самостоятельные) вопросы/действия ----------
 const TRUTH_STANDALONE = {
   ru: [
     'Какой твой самый большой страх?', 'Расскажи о самом неловком моменте в твоей жизни.',
