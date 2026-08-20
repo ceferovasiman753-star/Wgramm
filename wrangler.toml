@@ -1,0 +1,7 @@
+name = "truth-or-dare-bot"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "STATE_KV"
+id = "9deb0e3af2674d388efb436035462965"
